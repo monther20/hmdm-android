@@ -14,6 +14,10 @@ import com.hmdm.launcher.util.RemoteLogger;
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
+        // [HOTSPOT] Enable hotspot on every boot
+        Log.i("BootReceiver", "Boot received — enabling hotspot via HotspotManager");
+        com.hmdm.launcher.util.HotspotManager.enableHotspot(context);
+
         Log.i(Const.LOG_TAG, "Got the BOOT_RECEIVER broadcast");
         RemoteLogger.log(context, Const.LOG_DEBUG, "Got the BOOT_RECEIVER broadcast");
 

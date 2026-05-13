@@ -34,4 +34,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hmdm-hotspot-release
-          path: "**/*.apk"
+          path: app/build/outputs/apk/opensource/release/*.apk

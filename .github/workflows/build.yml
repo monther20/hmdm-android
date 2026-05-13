@@ -27,8 +27,11 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
+      - name: List generated APKs
+        run: find . -name "*.apk" -type f
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: hmdm-hotspot-release
-          path: app/build/outputs/apk/release/*.apk
+          path: "**/*.apk"

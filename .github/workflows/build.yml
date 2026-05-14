@@ -31,7 +31,7 @@ jobs:
         run: find . -name "*.apk" -type f
 
       - name: Install Android Build Tools
-        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0"
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
 
       - name: Sign APK
         id: sign_apk
@@ -42,7 +42,6 @@ jobs:
           alias: ${{ secrets.KEY_ALIAS }}
           keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
           keyPassword: ${{ secrets.KEY_PASSWORD }}
-          buildToolsVersion: "34.0.0"
 
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4

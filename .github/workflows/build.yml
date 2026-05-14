@@ -30,8 +30,18 @@ jobs:
       - name: List generated APKs
         run: find . -name "*.apk" -type f
 
-      - name: Upload APK artifact
+      - name: Sign APK
+        id: sign_apk
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: app/build/outputs/apk/opensource/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: hmdm-hotspot-release
-          path: app/build/outputs/apk/opensource/release/*.apk
+          path: ${{ steps.sign_apk.outputs.signedReleaseFile }}

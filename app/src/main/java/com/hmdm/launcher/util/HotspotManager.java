@@ -75,6 +75,11 @@ public class HotspotManager extends Service {
                 startTethering.invoke(cm, 0, false, null, null);
                 Log.i(TAG, "startTethering invoked with null callback");
 
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                Throwable cause = e.getCause();
+                Log.e(TAG, "InvocationTargetException cause: " +
+                    (cause != null ? cause.getClass().getSimpleName() + " — " + cause.getMessage() : "null cause"));
+                stopSelf();
             } catch (Exception e) {
                 Log.e(TAG, "Exception: " + e.getClass().getSimpleName() + " — " + e.getMessage());
                 stopSelf();

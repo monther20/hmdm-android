@@ -9,6 +9,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
 public class HotspotManager extends Service {
@@ -35,43 +36,45 @@ public class HotspotManager extends Service {
                     return;
                 }
 
-                Method[] methods = cm.getClass().getDeclaredMethods();
-                for (Method m : methods) {
-                    if (m.getName().contains("ether") || m.getName().contains("Tether")) {
-                        Log.i(TAG, "Found tethering method: " + m.getName());
+                // Find the startTethering method that takes an int, boolean, callback, handler
+                Method startTethering = null;
+                for (Method m : cm.getClass().getDeclaredMethods()) {
+                    if (m.getName().equals("startTethering")) {
+                        Class<?>[] params = m.getParameterTypes();
+                        Log.i(TAG, "startTethering signature: " + java.util.Arrays.toString(params));
+                        if (params.length == 4 && params[0] == int.class) {
+                            startTethering = m;
+                            break;
+                        }
                     }
                 }
 
-                Method startTethering = cm.getClass().getDeclaredMethod(
-                    "startTethering",
-                    int.class,
-                    boolean.class,
-                    Class.forName("android.net.ConnectivityManager$OnStartTetheringCallback"),
-                    Handler.class
-                );
-                startTethering.setAccessible(true);
+                if (startTethering == null) {
+                    Log.e(TAG, "startTethering(int,...) method not found");
+                    stopSelf();
+                    return;
+                }
 
-                Object callback = java.lang.reflect.Proxy.newProxyInstance(
-                    getClassLoader(),
-                    new Class[]{
-                        Class.forName("android.net.ConnectivityManager$OnStartTetheringCallback")
-                    },
-                    (proxy, method, args) -> {
-                        Log.i(TAG, "Tethering callback fired: " + method.getName());
+                // Get the callback class and create an anonymous subclass via reflection
+                Class<?> callbackClass = Class.forName(
+                    "android.net.ConnectivityManager$OnStartTetheringCallback");
+
+                // Build a dynamic subclass of the abstract callback
+                Object callback = new Object() {
+                    public void onTetheringStarted() {
+                        Log.i(TAG, "Tethering started successfully!");
                         stopSelf();
-                        return null;
                     }
-                );
+                    public void onTetheringFailed() {
+                        Log.e(TAG, "Tethering failed!");
+                        stopSelf();
+                    }
+                };
 
-                startTethering.invoke(cm, 0, false, callback, null);
-                Log.i(TAG, "startTethering invoked successfully");
+                startTethering.setAccessible(true);
+                startTethering.invoke(cm, 0, false, null, null);
+                Log.i(TAG, "startTethering invoked with null callback");
 
-            } catch (ClassNotFoundException e) {
-                Log.e(TAG, "Class not found: " + e.getMessage());
-                stopSelf();
-            } catch (NoSuchMethodException e) {
-                Log.e(TAG, "Method not found: " + e.getMessage());
-                stopSelf();
             } catch (Exception e) {
                 Log.e(TAG, "Exception: " + e.getClass().getSimpleName() + " — " + e.getMessage());
                 stopSelf();

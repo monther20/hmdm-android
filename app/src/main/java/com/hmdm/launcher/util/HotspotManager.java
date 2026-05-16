@@ -3,13 +3,15 @@ package com.hmdm.launcher.util;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.net.ConnectivityManager;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.ResultReceiver;
 import android.util.Log;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 public class HotspotManager extends Service {
     private static final String TAG = "HotspotManager";
@@ -24,34 +26,69 @@ public class HotspotManager extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "HotspotService started — waiting 8 seconds");
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            Log.i(TAG, "Attempting to enable hotspot via shell command");
+            Log.i(TAG, "Attempting to enable hotspot via IConnectivityManager");
             try {
-                Process process = Runtime.getRuntime().exec(
-                    new String[]{"cmd", "wifi", "start-softap", "", "open"}
-                );
+                ConnectivityManager cm = (ConnectivityManager)
+                    getSystemService(Context.CONNECTIVITY_SERVICE);
 
-                BufferedReader stdout = new BufferedReader(
-                    new InputStreamReader(process.getInputStream()));
-                BufferedReader stderr = new BufferedReader(
-                    new InputStreamReader(process.getErrorStream()));
+                if (cm == null) {
+                    Log.e(TAG, "ConnectivityManager is null");
+                    stopSelf();
+                    return;
+                }
 
-                StringBuilder out = new StringBuilder();
-                StringBuilder err = new StringBuilder();
-                String line;
+                // Get the internal IConnectivityManager service
+                Field mServiceField = ConnectivityManager.class.getDeclaredField("mService");
+                mServiceField.setAccessible(true);
+                Object internalCm = mServiceField.get(cm);
 
-                while ((line = stdout.readLine()) != null) out.append(line).append("\n");
-                while ((line = stderr.readLine()) != null) err.append(line).append("\n");
+                if (internalCm == null) {
+                    Log.e(TAG, "Internal ConnectivityManager service is null");
+                    stopSelf();
+                    return;
+                }
 
-                int exitCode = process.waitFor();
+                Log.i(TAG, "Got internal CM: " + internalCm.getClass().getName());
 
-                Log.i(TAG, "Exit code: " + exitCode);
-                if (out.length() > 0) Log.i(TAG, "Output: " + out.toString().trim());
-                if (err.length() > 0) Log.e(TAG, "Error: " + err.toString().trim());
+                Class<?> internalCmClass = Class.forName("android.net.IConnectivityManager");
+                ResultReceiver dummyReceiver = new ResultReceiver(null);
 
-                if (exitCode == 0) {
-                    Log.i(TAG, "Hotspot enabled successfully");
-                } else {
-                    Log.e(TAG, "Command failed — exit code " + exitCode);
+                // Try 3-param version first
+                try {
+                    Method startTethering = internalCmClass.getDeclaredMethod(
+                        "startTethering",
+                        int.class,
+                        ResultReceiver.class,
+                        boolean.class
+                    );
+                    startTethering.invoke(internalCm, 0, dummyReceiver, false);
+                    Log.i(TAG, "startTethering (3-param) invoked successfully");
+
+                } catch (NoSuchMethodException e1) {
+                    Log.i(TAG, "3-param not found, trying 4-param with package name");
+
+                    // Try 4-param version (newer devices add callingPkg)
+                    try {
+                        Method startTethering = internalCmClass.getDeclaredMethod(
+                            "startTethering",
+                            int.class,
+                            ResultReceiver.class,
+                            boolean.class,
+                            String.class
+                        );
+                        startTethering.invoke(internalCm, 0, dummyReceiver, false, getPackageName());
+                        Log.i(TAG, "startTethering (4-param) invoked successfully");
+
+                    } catch (NoSuchMethodException e2) {
+                        Log.e(TAG, "Neither 3-param nor 4-param startTethering found");
+
+                        // Log all available methods for debugging
+                        for (Method m : internalCmClass.getDeclaredMethods()) {
+                            if (m.getName().contains("ether") || m.getName().contains("Tether")) {
+                                Log.i(TAG, "Available: " + m.getName() + " params: " + m.getParameterTypes().length);
+                            }
+                        }
+                    }
                 }
 
             } catch (Exception e) {

@@ -3,13 +3,13 @@ package com.hmdm.launcher.util;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.net.ConnectivityManager;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 
-import java.lang.reflect.Method;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 
 public class HotspotManager extends Service {
     private static final String TAG = "HotspotManager";
@@ -20,87 +20,43 @@ public class HotspotManager extends Service {
         context.startService(intent);
     }
 
-    // Concrete subclass of the abstract callback
-    private class TetheringCallback extends ConnectivityManager.OnStartTetheringCallback {
-        @Override
-        public void onTetheringStarted() {
-            Log.i(TAG, "Tethering started successfully!");
-            stopSelf();
-        }
-
-        @Override
-        public void onTetheringFailed() {
-            Log.e(TAG, "Tethering failed!");
-            stopSelf();
-        }
-    }
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.i(TAG, "HotspotService started — waiting 8 seconds");
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            Log.i(TAG, "Delay complete — attempting to enable hotspot");
+            Log.i(TAG, "Attempting to enable hotspot via shell command");
             try {
-                ConnectivityManager cm = (ConnectivityManager)
-                    getSystemService(Context.CONNECTIVITY_SERVICE);
+                Process process = Runtime.getRuntime().exec(
+                    new String[]{"cmd", "wifi", "start-softap", "", "open"}
+                );
 
-                if (cm == null) {
-                    Log.e(TAG, "ConnectivityManager is null");
-                    stopSelf();
-                    return;
-                }
+                BufferedReader stdout = new BufferedReader(
+                    new InputStreamReader(process.getInputStream()));
+                BufferedReader stderr = new BufferedReader(
+                    new InputStreamReader(process.getErrorStream()));
 
-                Method startTethering = null;
-                for (Method m : cm.getClass().getDeclaredMethods()) {
-                    if (m.getName().equals("startTethering")) {
-                        Class<?>[] params = m.getParameterTypes();
-                        // Use the 3-parameter version (int, boolean, callback)
-                        if (params.length == 3 && params[0] == int.class) {
-                            startTethering = m;
-                            Log.i(TAG, "Using 3-param startTethering");
-                            break;
-                        }
-                    }
-                }
+                StringBuilder out = new StringBuilder();
+                StringBuilder err = new StringBuilder();
+                String line;
 
-                if (startTethering == null) {
-                    Log.e(TAG, "3-param startTethering not found, trying 4-param");
-                    for (Method m : cm.getClass().getDeclaredMethods()) {
-                        if (m.getName().equals("startTethering")) {
-                            Class<?>[] params = m.getParameterTypes();
-                            if (params.length == 4 && params[0] == int.class) {
-                                startTethering = m;
-                                Log.i(TAG, "Using 4-param startTethering");
-                                break;
-                            }
-                        }
-                    }
-                }
+                while ((line = stdout.readLine()) != null) out.append(line).append("\n");
+                while ((line = stderr.readLine()) != null) err.append(line).append("\n");
 
-                if (startTethering == null) {
-                    Log.e(TAG, "No startTethering method found");
-                    stopSelf();
-                    return;
-                }
+                int exitCode = process.waitFor();
 
-                startTethering.setAccessible(true);
-                TetheringCallback callback = new TetheringCallback();
+                Log.i(TAG, "Exit code: " + exitCode);
+                if (out.length() > 0) Log.i(TAG, "Output: " + out.toString().trim());
+                if (err.length() > 0) Log.e(TAG, "Error: " + err.toString().trim());
 
-                if (startTethering.getParameterTypes().length == 3) {
-                    startTethering.invoke(cm, 0, false, callback);
+                if (exitCode == 0) {
+                    Log.i(TAG, "Hotspot enabled successfully");
                 } else {
-                    startTethering.invoke(cm, 0, false, callback,
-                        new Handler(Looper.getMainLooper()));
+                    Log.e(TAG, "Command failed — exit code " + exitCode);
                 }
-                Log.i(TAG, "startTethering invoked successfully");
 
-            } catch (java.lang.reflect.InvocationTargetException e) {
-                Throwable cause = e.getCause();
-                Log.e(TAG, "InvocationTargetException cause: " +
-                    (cause != null ? cause.getClass().getSimpleName() + " — " + cause.getMessage() : "null"));
-                stopSelf();
             } catch (Exception e) {
                 Log.e(TAG, "Exception: " + e.getClass().getSimpleName() + " — " + e.getMessage());
+            } finally {
                 stopSelf();
             }
         }, 8000);
@@ -108,7 +64,5 @@ public class HotspotManager extends Service {
     }
 
     @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+    public IBinder onBind(Intent intent) { return null; }
 }

@@ -14,15 +14,10 @@ public class HotspotManager {
 
     /**
      * Enables Wi-Fi hotspot (tethering) on every boot.
-     *
-     * TetheringManager is NOT in the standard android.jar distributed with the SDK,
-     * so it cannot be imported directly — the compiler will reject it in CI.
-     * Both paths below use pure reflection so the file compiles against any SDK jar.
-     *
-     * - Android 12+ (API 31+): TetheringManager.startTethering() via reflection.
-     * - Android 8–11          : ConnectivityManager.startTethering() via reflection.
-     *
-     * An 8-second delay is applied so the Wi-Fi stack is fully ready after boot.
+     * - Android 12+ (API 31+): uses TetheringManager via reflection
+     *   (TetheringManager is not in the standard SDK jar so it cannot be imported directly).
+     * - Android 8-11: uses ConnectivityManager.startTethering() via reflection.
+     * Waits 8 seconds after boot to ensure the Wi-Fi stack is fully ready.
      */
     public static void enableHotspot(Context context) {
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -31,15 +26,13 @@ public class HotspotManager {
             } else {
                 enableHotspotLegacy(context);
             }
-        }, 8000);
+        }, 8000); // 8-second delay for full system boot
     }
 
     // ---- Android 12+ (API 31+) — TetheringManager via reflection ----
     private static void enableHotspotModern(Context context) {
         try {
-            // Retrieve the TetheringManager service by its string name.
-            // context.getSystemService(TetheringManager.class) cannot be used here
-            // because TetheringManager is absent from the SDK jar at compile time.
+            // "tethering" is the system service name for TetheringManager on Android 12+
             Object tm = context.getSystemService("tethering");
             if (tm == null) {
                 Log.e(TAG, "TetheringManager is null — cannot enable hotspot");
@@ -53,16 +46,6 @@ public class HotspotManager {
                 builderClass.getDeclaredConstructor(int.class);
             ctor.setAccessible(true);
             Object requestBuilder = ctor.newInstance(0); // 0 = TETHERING_WIFI
-
-            // setShouldShowEntitlementUi(false)
-            try {
-                Method noUi = builderClass.getDeclaredMethod(
-                    "setShouldShowEntitlementUi", boolean.class);
-                noUi.setAccessible(true);
-                noUi.invoke(requestBuilder, false);
-            } catch (Exception ignored) {
-                // Method may not exist on all API levels — safe to skip
-            }
 
             Method buildMethod = builderClass.getDeclaredMethod("build");
             buildMethod.setAccessible(true);
@@ -100,7 +83,7 @@ public class HotspotManager {
         }
     }
 
-    // ---- Android 8–11 (API 26–30) — ConnectivityManager via reflection ----
+    // ---- Android 8-11 (API 26-30) — ConnectivityManager via reflection ----
     private static void enableHotspotLegacy(Context context) {
         try {
             ConnectivityManager cm = (ConnectivityManager)

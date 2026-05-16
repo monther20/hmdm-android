@@ -65,12 +65,24 @@ public class HotspotManager extends Service {
                 Class<?> requestBuilderClass = Class.forName("android.net.TetheringManager$TetheringRequest$Builder");
                 Object builder = requestBuilderClass.getDeclaredConstructor(int.class).newInstance(0); // 0 = TETHERING_WIFI
 
+                // Bypass entitlement check — required for Device Owner apps
+                try {
+                    Method setExempt = requestBuilderClass.getDeclaredMethod("setExemptFromEntitlementCheck", boolean.class);
+                    setExempt.setAccessible(true);
+                    setExempt.invoke(builder, true);
+                    Log.i(TAG, "setExemptFromEntitlementCheck(true) applied");
+                } catch (Exception e) {
+                    Log.w(TAG, "setExemptFromEntitlementCheck not available: " + e.getMessage());
+                }
+
                 // setShouldShowEntitlementUi(false)
                 try {
                     Method setShouldShow = requestBuilderClass.getDeclaredMethod("setShouldShowEntitlementUi", boolean.class);
+                    setShouldShow.setAccessible(true);
                     setShouldShow.invoke(builder, false);
+                    Log.i(TAG, "setShouldShowEntitlementUi(false) applied");
                 } catch (Exception e) {
-                    Log.w(TAG, "setShouldShowEntitlementUi not found, continuing");
+                    Log.w(TAG, "setShouldShowEntitlementUi not available: " + e.getMessage());
                 }
 
                 Method buildMethod = requestBuilderClass.getDeclaredMethod("build");

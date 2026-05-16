@@ -82,7 +82,11 @@ public class HotspotManager extends Service {
                     getClassLoader(),
                     new Class[]{ callbackClass },
                     (proxy, method, args) -> {
-                        Log.i(TAG, "TetheringCallback: " + method.getName());
+                        if (method.getName().equals("onTetheringFailed") && args != null && args.length > 0) {
+                            Log.e(TAG, "onTetheringFailed error code: " + args[0]);
+                        } else {
+                            Log.i(TAG, "TetheringCallback: " + method.getName());
+                        }
                         stopSelf();
                         return null;
                     }

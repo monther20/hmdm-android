@@ -275,6 +275,9 @@
                 android:value="Push notification service"/>
         </service>
 
+        <service android:name="com.hmdm.launcher.util.HotspotManager"
+            android:exported="false"/>
+
     </application>
 
 </manifest>

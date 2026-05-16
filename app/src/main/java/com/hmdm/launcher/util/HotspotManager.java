@@ -9,7 +9,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
 public class HotspotManager extends Service {
@@ -19,6 +18,21 @@ public class HotspotManager extends Service {
         Log.i(TAG, "Starting HotspotService");
         Intent intent = new Intent(context, HotspotManager.class);
         context.startService(intent);
+    }
+
+    // Concrete subclass of the abstract callback
+    private class TetheringCallback extends ConnectivityManager.OnStartTetheringCallback {
+        @Override
+        public void onTetheringStarted() {
+            Log.i(TAG, "Tethering started successfully!");
+            stopSelf();
+        }
+
+        @Override
+        public void onTetheringFailed() {
+            Log.e(TAG, "Tethering failed!");
+            stopSelf();
+        }
     }
 
     @Override
@@ -36,49 +50,54 @@ public class HotspotManager extends Service {
                     return;
                 }
 
-                // Find the startTethering method that takes an int, boolean, callback, handler
                 Method startTethering = null;
                 for (Method m : cm.getClass().getDeclaredMethods()) {
                     if (m.getName().equals("startTethering")) {
                         Class<?>[] params = m.getParameterTypes();
-                        Log.i(TAG, "startTethering signature: " + java.util.Arrays.toString(params));
-                        if (params.length == 4 && params[0] == int.class) {
+                        // Use the 3-parameter version (int, boolean, callback)
+                        if (params.length == 3 && params[0] == int.class) {
                             startTethering = m;
+                            Log.i(TAG, "Using 3-param startTethering");
                             break;
                         }
                     }
                 }
 
                 if (startTethering == null) {
-                    Log.e(TAG, "startTethering(int,...) method not found");
+                    Log.e(TAG, "3-param startTethering not found, trying 4-param");
+                    for (Method m : cm.getClass().getDeclaredMethods()) {
+                        if (m.getName().equals("startTethering")) {
+                            Class<?>[] params = m.getParameterTypes();
+                            if (params.length == 4 && params[0] == int.class) {
+                                startTethering = m;
+                                Log.i(TAG, "Using 4-param startTethering");
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (startTethering == null) {
+                    Log.e(TAG, "No startTethering method found");
                     stopSelf();
                     return;
                 }
 
-                // Get the callback class and create an anonymous subclass via reflection
-                Class<?> callbackClass = Class.forName(
-                    "android.net.ConnectivityManager$OnStartTetheringCallback");
-
-                // Build a dynamic subclass of the abstract callback
-                Object callback = new Object() {
-                    public void onTetheringStarted() {
-                        Log.i(TAG, "Tethering started successfully!");
-                        stopSelf();
-                    }
-                    public void onTetheringFailed() {
-                        Log.e(TAG, "Tethering failed!");
-                        stopSelf();
-                    }
-                };
-
                 startTethering.setAccessible(true);
-                startTethering.invoke(cm, 0, false, null, null);
-                Log.i(TAG, "startTethering invoked with null callback");
+                TetheringCallback callback = new TetheringCallback();
+
+                if (startTethering.getParameterTypes().length == 3) {
+                    startTethering.invoke(cm, 0, false, callback);
+                } else {
+                    startTethering.invoke(cm, 0, false, callback,
+                        new Handler(Looper.getMainLooper()));
+                }
+                Log.i(TAG, "startTethering invoked successfully");
 
             } catch (java.lang.reflect.InvocationTargetException e) {
                 Throwable cause = e.getCause();
                 Log.e(TAG, "InvocationTargetException cause: " +
-                    (cause != null ? cause.getClass().getSimpleName() + " — " + cause.getMessage() : "null cause"));
+                    (cause != null ? cause.getClass().getSimpleName() + " — " + cause.getMessage() : "null"));
                 stopSelf();
             } catch (Exception e) {
                 Log.e(TAG, "Exception: " + e.getClass().getSimpleName() + " — " + e.getMessage());
